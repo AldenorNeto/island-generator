@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <style>
+      body {
+        background-color: #040438;
+      }
+      canvas {
+        border: 1px solid #000;
+        background-color: azure;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="map" width="1000" height="1000">canvas</canvas>
+    <script>
+      const canvasSize = 1000;
+      const dimension = 100;
+      const arr = Array(dimension ** 2).fill(0);
+
+      const assembleMap = (arrCalc) => {
+        const paleta = [
+          "#0008FF",
+          "#454BFC",
+          "#FCB045",
+          "#52C91E",
+          "#008C09",
+          "#474747",
+          "#CFCFCF",
+        ];
+        const pixelSize = canvasSize / dimension;
+
+        const canvas = document.getElementById("map");
+        const ctx = canvas.getContext("2d");
+
+        for (let x = 0; x < arrCalc.length; x++) {
+          const position = {
+            x: (x % dimension) * pixelSize,
+            y: Math.floor(x / dimension) * pixelSize,
+          };
+
+          ctx.fillStyle = paleta[arrCalc[x]];
+
+          ctx.fillRect(position.x, position.y, pixelSize, pixelSize);
+
+          ctx.fillStyle = "#000";
+          ctx.font = "4px Arial";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(
+            x,
+            position.x + pixelSize / 2,
+            position.y + pixelSize / 2
+          );
+        }
+      };
+
+      const initIsland = () => {
+        let newArr = [...arr];
+
+        const center = (dimension / 2) * dimension + dimension / 2;
+
+        newArr[center]++;
+
+        return newArr;
+      };
+
+      const inited = initIsland();
+
+      const espalhavizinhos = (vizinho) => {
+        return vizinho.map((e, i) => {
+          const vizinhos = [
+            vizinho[i - 1],
+            vizinho[i + 1],
+            vizinho[i - dimension],
+            vizinho[i + dimension],
+          ];
+          const maxValue = vizinhos.reduce(
+            (acc, curr) => (curr > acc ? curr : acc),
+            e
+          );
+
+          return maxValue;
+        });
+      };
+
+      const as = espalhavizinhos(
+        espalhavizinhos(espalhavizinhos(espalhavizinhos(inited)))
+      );
+
+      assembleMap(as);
+    </script>
+  </body>
+</html>
