@@ -18,19 +18,26 @@
     <canvas id="map" width="1000" height="1000">canvas</canvas>
     <script>
       const canvasSize = 1000;
-      const dimension = 100;
+      const dimension = 150;
       const arr = Array(dimension ** 2).fill(0);
+      const paleta = [
+        "#0008FF",
+        "#454BFC",
+        "#FCB045",
+        "#52C91E",
+        "#008C09",
+        "#474747",
+        "#CFCFCF",
+      ];
+
+      const seedInit = String(Math.random())
+        .replace("0.", "")
+        .split("")
+        .map(Number);
+
+      const seed = new Array(8).fill(seedInit).flat();
 
       const assembleMap = (arrCalc) => {
-        const paleta = [
-          "#0008FF",
-          "#454BFC",
-          "#FCB045",
-          "#52C91E",
-          "#008C09",
-          "#474747",
-          "#CFCFCF",
-        ];
         const pixelSize = canvasSize / dimension;
 
         const canvas = document.getElementById("map");
@@ -42,56 +49,116 @@
             y: Math.floor(x / dimension) * pixelSize,
           };
 
-          ctx.fillStyle = paleta[arrCalc[x]];
+          ctx.fillStyle = paleta[Math.round(arrCalc[x])];
 
           ctx.fillRect(position.x, position.y, pixelSize, pixelSize);
-
-          ctx.fillStyle = "#000";
-          ctx.font = "4px Arial";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText(
-            x,
-            position.x + pixelSize / 2,
-            position.y + pixelSize / 2
-          );
         }
       };
 
-      const initIsland = () => {
+      const option75 = () => Math.random() > 0.75;
+
+      const initIsland = (arr, index) => {
         let newArr = [...arr];
 
+        const force = ((paleta.length - 1) % (1 / index)) / 12;
+
+        const desloc = (seed[0] % 2) + 1;
+
         const center = (dimension / 2) * dimension + dimension / 2;
+        const vizinhos = [
+          center - dimension * seed[0] * desloc - seed[1] * desloc,
+          center - dimension * seed[2] * desloc + seed[3] * desloc,
+          center + dimension * seed[4] * desloc - seed[5] * desloc,
+          center + dimension * seed[6] * desloc + seed[7] * desloc,
+        ];
 
-        newArr[center]++;
-
+        vizinhos.forEach((e) => (newArr[e] += force));
         return newArr;
       };
 
-      const inited = initIsland();
+      const media = (arrIn) => {
+        const soma = arrIn.reduce((acc, curr) => acc + (curr || 0), arrIn[0]);
+        return soma / (arrIn.length + 1);
+      };
 
-      const espalhavizinhos = (vizinho) => {
-        return vizinho.map((e, i) => {
-          const vizinhos = [
-            vizinho[i - 1],
-            vizinho[i + 1],
-            vizinho[i - dimension],
-            vizinho[i + dimension],
-          ];
-          const maxValue = vizinhos.reduce(
-            (acc, curr) => (curr > acc ? curr : acc),
-            e
+      const espalhavizinhos = (vizinho, index) => {
+        const aposInit = index < 0.8 ? initIsland(vizinho, index) : vizinho;
+
+        return aposInit.map((e, i) => {
+          const pegaVizinhos = (aposInit, e, i, dist = 1) => {
+            let vizin = [];
+
+            for (let index = 0; index < dist; index++) {
+              vizin.push(
+                -(index + dist),
+                +(index + dist),
+                -((index + dist) * dimension),
+                +((index + dist) * dimension),
+                -(index + dist - dimension * dist),
+                -(index + dist + dimension * dist),
+                +(index + dist - dimension * dist),
+                +(index + dist + dimension * dist)
+              );
+            }
+
+            return vizin
+              .filter((_, indd) => option75())
+              .map((v) => aposInit[v + i])
+              .reduce(
+                (acc, curr) =>
+                  curr > acc.numb
+                    ? { numb: curr, count: acc.count + 1 }
+                    : { numb: acc.numb, count: acc.count },
+                { numb: e, count: 0 }
+              );
+          };
+
+          const { numb, count } = pegaVizinhos(
+            aposInit,
+            e,
+            i,
+            index > 0.5 ? 2 : 1
           );
 
-          return maxValue;
+          return numb;
         });
       };
 
-      const as = espalhavizinhos(
-        espalhavizinhos(espalhavizinhos(espalhavizinhos(inited)))
-      );
+      const amortizaVizinho = (vizinho, force = 1) => {
+        return vizinho.map((e, i) => {
+          let vizin = [];
 
-      assembleMap(as);
+          for (let index = 0; index < force; index++) {
+            vizin.push(
+              -(index + 1) * 1,
+              +(index + 1) * 1,
+              -(index + 1) * dimension,
+              +(index + 1) * dimension,
+              -(index + 1) * (dimension - 1),
+              -(index + 1) * (dimension + 1),
+              +(index + 1) * (dimension - 1),
+              +(index + 1) * (dimension + 1)
+            );
+          }
+
+          return media([e, media([e, ...vizin.map((v) => vizinho[v + i])])]);
+        });
+      };
+
+      let atualValor = initIsland(arr, true);
+
+      const quantGeracoes = 28;
+
+      for (let index = 0; index < quantGeracoes; index++) {
+        setTimeout(() => {
+          atualValor =
+            index < 24
+              ? espalhavizinhos(atualValor, index / quantGeracoes)
+              : amortizaVizinho(atualValor, 8);
+
+          assembleMap(atualValor);
+        }, index);
+      }
     </script>
   </body>
 </html>
