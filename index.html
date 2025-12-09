@@ -9,7 +9,6 @@
         background-color: #040438;
       }
       canvas {
-        border: 1px solid #000;
         background-color: azure;
       }
     </style>
@@ -19,7 +18,7 @@
     <script>
       const canvasSize = 1000;
       const dimension = 150;
-      const arr = Array(dimension ** 2).fill(0);
+      const zerosMatrix = Array(dimension ** 2).fill(0);
       const paleta = [
         "#0008FF",
         "#454BFC",
@@ -37,42 +36,86 @@
 
       const seed = new Array(8).fill(seedInit).flat();
 
+      function softmax(arr) {
+        const max = Math.max(...arr);
+
+        const exps = arr.map((v) => Math.exp(v - max));
+        const sum = exps.reduce((a, b) => a + b, 0);
+
+        return exps.map((v) => v / sum);
+      }
+
+      function normalizeMinMax(arr) {
+        const min = Math.min(...arr);
+        const max = Math.max(...arr);
+        const range = max - min || 1;
+
+        return arr.map((v) => ((v - min) / range) * (paleta.length - 1));
+      }
+
+      function mean(arr) {
+        const soma = arr.reduce((acc, curr) => acc + curr, 0);
+        return soma / arr.length;
+      }
+
+      function median(arr, percentile = 0.5) {
+        const sortedArr = [...arr].sort((a, b) => a - b);
+        const mid = Math.floor(sortedArr.length * percentile);
+
+        return sortedArr.length % 2 !== 0
+          ? sortedArr[mid]
+          : (sortedArr[mid - 1] + sortedArr[mid]) / 2;
+      }
+
       const assembleMap = (arrCalc) => {
         const pixelSize = canvasSize / dimension;
+        const softmaxArr = normalizeMinMax(arrCalc);
 
         const canvas = document.getElementById("map");
         const ctx = canvas.getContext("2d");
 
-        for (let x = 0; x < arrCalc.length; x++) {
+        for (let x = 0; x < softmaxArr.length; x++) {
           const position = {
             x: (x % dimension) * pixelSize,
             y: Math.floor(x / dimension) * pixelSize,
           };
 
-          ctx.fillStyle = paleta[Math.round(arrCalc[x])];
+          const indiceCerto = (() => {
+            let preIndice = Math.round(softmaxArr[x]);
+
+            if (preIndice < 0) return 0;
+            if (preIndice >= paleta.length) return paleta.length - 1;
+
+            return preIndice;
+          })();
+
+          ctx.fillStyle = paleta[indiceCerto];
 
           ctx.fillRect(position.x, position.y, pixelSize, pixelSize);
         }
       };
 
+      assembleMap(zerosMatrix);
+
       const option75 = () => Math.random() > 0.75;
 
-      const initIsland = (arr, index) => {
+      const initIsland = (arr) => {
         let newArr = [...arr];
 
-        const force = ((paleta.length - 1) % (1 / index)) / 12;
+        const force = paleta.length ** 12;
 
-        const desloc = (seed[0] % 2) + 1;
+        const deslocH = (seed[0] % 2) + 1;
+        const deslocV = (seed[1] % 2) + 1;
 
         const center = (dimension / 2) * dimension + dimension / 2;
         const vizinhos = [
-          center - dimension * seed[0] * desloc - seed[1] * desloc,
-          center - dimension * seed[2] * desloc + seed[3] * desloc,
-          center + dimension * seed[4] * desloc - seed[5] * desloc,
-          center + dimension * seed[6] * desloc + seed[7] * desloc,
+          -dimension * seed[0] * deslocV - seed[1] * deslocH,
+          -dimension * seed[2] * deslocV + seed[3] * deslocH,
+          +dimension * seed[4] * deslocV - seed[5] * deslocH,
+          +dimension * seed[6] * deslocV + seed[7] * deslocH,
         ];
 
-        vizinhos.forEach((e) => (newArr[e] += force));
+        vizinhos.forEach((e) => (newArr[center + e] += force));
         return newArr;
       };
 
@@ -82,7 +125,7 @@
       };
 
       const espalhavizinhos = (vizinho, index) => {
-        const aposInit = index < 0.8 ? initIsland(vizinho, index) : vizinho;
+        const aposInit = vizinho;
 
         return aposInit.map((e, i) => {
           const pegaVizinhos = (aposInit, e, i, dist = 1) => {
@@ -101,8 +144,22 @@
               );
             }
 
+            vizin = vizin.filter(option75).filter((v) => {
+              const idx = v + i;
+              if (idx < 0 || idx >= aposInit.length) return false;
+
+              const rowA = Math.floor(i / dimension);
+              const colA = i % dimension;
+              const rowB = Math.floor(idx / dimension);
+              const colB = idx % dimension;
+
+              const rowDiff = Math.abs(rowA - rowB);
+              const colDiff = Math.abs(colA - colB);
+
+              return rowDiff <= dist && colDiff <= dist;
+            });
+
             return vizin
-              .filter((_, indd) => option75())
               .map((v) => aposInit[v + i])
               .reduce(
                 (acc, curr) =>
@@ -128,37 +185,172 @@
         return vizinho.map((e, i) => {
           let vizin = [];
 
-          for (let index = 0; index < force; index++) {
+          for (let index = 1; index <= force; index++) {
+            const dist = Math.max(index - 1, 0);
             vizin.push(
-              -(index + 1) * 1,
-              +(index + 1) * 1,
-              -(index + 1) * dimension,
-              +(index + 1) * dimension,
-              -(index + 1) * (dimension - 1),
-              -(index + 1) * (dimension + 1),
-              +(index + 1) * (dimension - 1),
-              +(index + 1) * (dimension + 1)
+              -index,
+              +index,
+              -(dimension * index),
+              +(dimension * index),
+              -(dimension * dist + dist),
+              +(dimension * dist + dist),
+              -(dimension * dist - dist),
+              +(dimension * dist - dist)
             );
           }
 
-          return media([e, media([e, ...vizin.map((v) => vizinho[v + i])])]);
+          vizin = vizin.filter((v) => {
+            const idx = v + i;
+            if (idx < 0 || idx >= vizinho.length) return false;
+
+            const rowA = Math.floor(i / dimension);
+            const colA = i % dimension;
+            const rowB = Math.floor(idx / dimension);
+            const colB = idx % dimension;
+
+            const rowDiff = Math.abs(rowA - rowB);
+            const colDiff = Math.abs(colA - colB);
+
+            return rowDiff <= force && colDiff <= force;
+          });
+
+          return media([e, ...vizin.map((v) => vizinho[v + i])]);
         });
       };
 
-      let atualValor = initIsland(arr, true);
+      let atualValor = zerosMatrix;
 
-      const quantGeracoes = 28;
+      const perlinNoiseRio = (arr) => {
+        let newMap = [...arr];
+        newMap = newMap.map(() => {
+          const r = Math.random() * 2 - 1;
+          const sign = Math.sign(r);
+          const mag = Math.abs(r) ** 2000;
+          return sign * mag;
+        });
 
-      for (let index = 0; index < quantGeracoes; index++) {
-        setTimeout(() => {
-          atualValor =
-            index < 24
-              ? espalhavizinhos(atualValor, index / quantGeracoes)
-              : amortizaVizinho(atualValor, 8);
+        let localforce = 4;
 
-          assembleMap(atualValor);
-        }, index);
-      }
+        for (let i = 0; i < 107; i++) {
+          newMap = amortizaVizinho(newMap, localforce);
+        }
+
+        newMap = normalizeMinMax(newMap);
+
+        let mediana = median(newMap, 0.5);
+        let medianaMenor = median(newMap, 0.3);
+        let medianaMaior = median(newMap, 0.7);
+        let max = Math.max(...newMap);
+        let min = Math.min(...newMap);
+
+        newMap = newMap.map((v) =>
+          v < medianaMaior && v > medianaMenor
+            ? mediana
+            : v > mediana
+            ? max
+            : min
+        );
+
+        for (let i = 0; i < 16; i++) {
+          newMap = amortizaVizinho(newMap, localforce);
+        }
+
+        newMap = normalizeMinMax(newMap);
+
+        mediana = median(newMap, 0.6);
+        medianaMenor = median(newMap, 0.55);
+        medianaMaior = median(newMap, 0.65);
+        max = Math.max(...newMap);
+        min = Math.min(...newMap);
+
+        newMap = newMap.map((v) =>
+          v < medianaMaior && v > medianaMenor ? 0 : max
+        );
+
+        newMap = normalizeMinMax(newMap);
+        newMap = amortizaVizinho(newMap, localforce);
+        newMap = amortizaVizinho(newMap, localforce);
+
+        newMap = normalizeMinMax(newMap).map((v) =>
+          Math.round(v) === paleta.length - 1 ? v : 0
+        );
+        newMap = newMap.map((v) => !!v * 1);
+        return newMap;
+      };
+
+      const perlinNoiseSort = (arr) => {
+        let newMap = [...arr];
+        newMap = newMap = newMap.map(() => {
+          const r = Math.random() * 2 - 1;
+          const sign = Math.sign(r);
+          const mag = Math.abs(r) ** 10;
+          return sign * mag;
+        });
+        let localforce = 2;
+
+        for (let i = 0; i < 8; i++) {
+          newMap = amortizaVizinho(newMap, localforce);
+        }
+
+        localforce = 1;
+
+        for (let i = 0; i < 5; i++) {
+          newMap = amortizaVizinho(newMap, localforce);
+        }
+
+        newMap = normalizeMinMax(newMap);
+
+        return newMap;
+      };
+
+      const assembleRio = (atualValor) => {
+        const rioNoise = perlinNoiseRio(atualValor);
+
+        const terraNoise = perlinNoiseSort(atualValor);
+
+        atualValor = terraNoise.map((v, i) => (rioNoise[i] === 0 ? 0 : v));
+        atualValor = amortizaVizinho(atualValor, 5);
+        atualValor = amortizaVizinho(atualValor, 3);
+        atualValor = amortizaVizinho(atualValor, 2);
+        atualValor = amortizaVizinho(atualValor, 1);
+        atualValor = amortizaVizinho(atualValor, 1);
+        atualValor = amortizaVizinho(atualValor, 1);
+
+        atualValor = atualValor.map((v, i) => (rioNoise[i] === 0 ? 0 : v));
+        atualValor = amortizaVizinho(atualValor, 5);
+        atualValor = amortizaVizinho(atualValor, 3);
+        atualValor = amortizaVizinho(atualValor, 1);
+        atualValor = amortizaVizinho(atualValor, 1);
+        atualValor = amortizaVizinho(atualValor, 1);
+        atualValor = amortizaVizinho(atualValor, 1);
+        atualValor = amortizaVizinho(atualValor, 1);
+        atualValor = amortizaVizinho(atualValor, 1);
+        atualValor = amortizaVizinho(atualValor, 1);
+
+        return atualValor;
+      };
+
+      const assembleIlha = (atualValor) => {
+        const quantGeracoes = 1;
+        atualValor = initIsland(atualValor, 1);
+        for (let index = 0; index < quantGeracoes; index++) {
+          atualValor = espalhavizinhos(atualValor, index / quantGeracoes);
+
+          // index < 20
+          //   ? espalhavizinhos(atualValor, index / quantGeracoes)
+          //   : amortizaVizinho(atualValor, 8);
+        }
+        for (let i = 0; i < 20; i++) {
+          atualValor = amortizaVizinho(atualValor, 8);
+        }
+        for (let index = 0; index < quantGeracoes; index++) {
+          atualValor = espalhavizinhos(atualValor, index / quantGeracoes);
+        }
+
+        return atualValor;
+      };
+
+      assembleMap(1 ? assembleIlha(zerosMatrix) : assembleRio(zerosMatrix));
     </script>
   </body>
 </html>
